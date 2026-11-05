@@ -1,0 +1,32 @@
+appId: com.dongyeolshin.dari
+productName: Dari
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**
+  - package.json
+# better-sqlite3 13+는 플랫폼별 N-API 사전 빌드(prebuilds/*.node)를 패키지에 포함하므로 다시 빌드하지 않는다.
+# (N-API는 Node/Electron 버전이 바뀌어도 그대로 동작)
+npmRebuild: false
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+win:
+  # nsis: 설치 파일 / portable: 설치 없이 바로 실행되는 단일 exe
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  # resources/icon.ico 가 있으면 앱 아이콘으로 쓴다 (256x256 이상 권장)
+portable:
+  artifactName: ${productName}-${version}-portable.exe
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  # Apple Silicon(arm64)과 Intel(x64) 각각 dmg 생성
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.developer-tools

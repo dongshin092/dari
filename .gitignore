@@ -1,0 +1,15 @@
+node_modules
+out
+dist
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 로그
+*.log
+npm-debug.log*
+
+# 로컬 전용 설정 (토큰 포함)
+.mcp.json
+.claude/
