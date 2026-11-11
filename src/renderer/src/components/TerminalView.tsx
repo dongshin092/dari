@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import type { AppSettings } from '@shared/types'
 import { findTheme, fontStack } from '../themes'
+import { endQuiet, isQuiet, QUIET_TIMEOUT } from '../cwdHook'
 
 export type TermSettings = Pick<
   AppSettings,
@@ -122,8 +123,23 @@ export function TerminalView(props: Props) {
     if (!first.current) t.write('\r\n\x1b[32m[재접속됨]\x1b[0m\r\n')
     first.current = false
 
+    // 따라가기 훅을 넣은 직후: 첫 OSC 7 전까지의 출력(명령 에코)을 숨기고 그 줄을 지운다
+    let pending = ''
+    let quietTimer: ReturnType<typeof setTimeout> | undefined
+    const flushQuiet = (out: string) => {
+      endQuiet(sessionId)
+      clearTimeout(quietTimer)
+      quietTimer = undefined
+      pending = ''
+      t.write(out)
+    }
     const offData = window.api.term.onData((id, data) => {
-      if (id === sessionId) t.write(data)
+      if (id !== sessionId) return
+      if (!isQuiet(sessionId)) return t.write(data)
+      pending += data
+      const i = pending.indexOf('\x1b]7;')
+      if (i >= 0) flushQuiet('\r\x1b[K' + pending.slice(i))
+      else quietTimer ??= setTimeout(() => flushQuiet(pending), QUIET_TIMEOUT)
     })
     const offExit = window.api.term.onExit((id, exit) => {
       if (id === sessionId) t.write(`\r\n\x1b[33m[${exit.reason}]\x1b[0m\r\n`)
@@ -134,6 +150,7 @@ export function TerminalView(props: Props) {
     window.api.term.resize(sessionId, t.cols, t.rows)
 
     return () => {
+      if (quietTimer) flushQuiet(pending)
       offData()
       offExit()
       inSub.dispose()

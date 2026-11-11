@@ -24,6 +24,8 @@ interface Tab {
   retries: number
   logPath?: string
   cwd?: string
+  /** SFTP 터미널 따라가기 */
+  follow?: boolean
   /** 동시 입력 대상 */
   broadcast: boolean
 }
@@ -138,7 +140,7 @@ export function App() {
       patchTab(tabId, { status: 'reconnecting' })
       try {
         const r = await tab.connect()
-        patchTab(tabId, { sessionId: r.sessionId, sftp: r.sftp, status: 'open', retries: 0, exitReason: undefined })
+        patchTab(tabId, { sessionId: r.sessionId, sftp: r.sftp, status: 'open', retries: 0, exitReason: undefined, cwd: undefined })
         if (tab.logPath) await window.api.log.start(r.sessionId, tab.title, tab.logPath)
       } catch (e) {
         const retries = tab.retries + 1
@@ -458,6 +460,8 @@ export function App() {
               cwd={active.cwd}
               notify={notify}
               showHidden={settings?.showHidden ?? true}
+              follow={active.follow ?? false}
+              onFollowChange={(follow) => patchTab(active.tabId, { follow })}
             />
           )}
         </div>

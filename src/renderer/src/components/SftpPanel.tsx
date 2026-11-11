@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import type { SftpEntry } from '@shared/types'
 import { ask, ContextMenu, type MenuItem } from './ui'
+import { installCwdHook } from '../cwdHook'
 
 interface Props {
   sessionId: string
@@ -9,15 +10,10 @@ interface Props {
   notify: (msg: string) => void
   /** . 으로 시작하는 숨김 파일 표시 */
   showHidden: boolean
+  /** 터미널 따라가기 (탭마다 기억, 탭을 옮겨 다녀도 유지) */
+  follow: boolean
+  onFollowChange: (follow: boolean) => void
 }
-
-/**
- * 셸이 프롬프트마다 현재 경로를 OSC 7로 알리게 하는 한 줄 (bash·zsh).
- * 앞의 공백은 HISTCONTROL=ignorespace 환경에서 history에 남지 않게 하려는 것.
- */
-const CWD_HOOK =
-  ` __awst_cwd(){ printf '\\033]7;file://%s%s\\033\\\\' "\${HOSTNAME:-$(hostname)}" "$PWD"; };` +
-  ` if [ -n "$ZSH_VERSION" ]; then precmd_functions+=(__awst_cwd); else PROMPT_COMMAND="__awst_cwd\${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi\r`
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`
@@ -33,16 +29,14 @@ function fmtMode(mode: number, isDir: boolean) {
 
 const shellQuote = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`
 
-export function SftpPanel({ sessionId, cwd: termCwd, notify, showHidden }: Props) {
+export function SftpPanel({ sessionId, cwd: termCwd, notify, showHidden, follow, onFollowChange }: Props) {
   const [cwd, setCwd] = useState('')
   const [pathInput, setPathInput] = useState('')
   const [entries, setEntries] = useState<SftpEntry[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ file: string; pct: number } | null>(null)
   const [dragOver, setDragOver] = useState(false)
-  const [follow, setFollow] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
-  const hooked = useRef(false)
 
   const load = useCallback(
     async (dir: string) => {
@@ -71,16 +65,16 @@ export function SftpPanel({ sessionId, cwd: termCwd, notify, showHidden }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow, termCwd])
 
-  const toggleFollow = () => {
-    const next = !follow
-    setFollow(next)
-    // 셸이 아직 경로를 알려주지 않으면 한 번 훅을 심는다
-    if (next && !termCwd && !hooked.current) {
-      hooked.current = true
-      window.api.term.write(sessionId, CWD_HOOK)
-      notify('터미널 경로 알림을 설정했습니다 (bash/zsh). 다음 프롬프트부터 따라갑니다.')
-    }
-  }
+  // 셸이 아직 경로를 알려주지 않으면 훅을 넣는다.
+  // 재접속 직후에도 따라가기가 켜져 있으면 다시 넣는다 (프롬프트가 뜰 시간을 조금 준다)
+  useEffect(() => {
+    if (!follow || termCwd) return
+    const timer = setTimeout(() => installCwdHook(sessionId), 800)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [follow, sessionId])
+
+  const toggleFollow = () => onFollowChange(!follow)
 
   useEffect(
     () =>
